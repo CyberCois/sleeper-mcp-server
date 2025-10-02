@@ -1,5 +1,7 @@
 name: Build & Push to GHCR
 
+# This workflow will always push the latest tag. It will optionally push a versioned tag as well if provided with workflow_dispatch
+
 on:
   push:
     branches: [ main ]
