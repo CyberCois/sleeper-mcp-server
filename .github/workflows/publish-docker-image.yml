@@ -4,6 +4,11 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional image version tag (e.g., 0.10.0)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -11,7 +16,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository }}  # owner/repo
 
 jobs:
   docker_publish:
@@ -19,10 +24,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
-      - name: Lowercase IMAGE_NAME name
-        run: echo "LOWERCASE_IMAGE_NAME=${IMAGE_NAME,,}" >> $GITHUB_ENV
+      - name: Lowercase IMAGE_NAME
+        run: echo "LOWERCASE_IMAGE_NAME=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -34,9 +39,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push image (latest)
+      - name: Compute tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${REGISTRY}/${LOWERCASE_IMAGE_NAME}"
+          TAGS="${BASE}:latest"
+
+          # Add version tag when manually dispatched and a non-empty version is provided
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER="${{ github.event.inputs.version }}"
+            if [[ -n "${VER}" ]]; then
+              # Strip leading 'v' if present and lowercase
+              VER="${VER#v}"
+              VER="${VER,,}"
+              TAGS="${TAGS},${BASE}:${VER}"
+            fi
+          fi
+
+          echo "TAGS=${TAGS}" >> "$GITHUB_ENV"
+          echo "Resolved tags: ${TAGS}"
+
+      - name: Build & Push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.LOWERCASE_IMAGE_NAME }}:latest
+          tags: ${{ env.TAGS }}
